@@ -1,7 +1,7 @@
 ## MCM9000 API v20 Simple Python api example
 ## How to use:
 
-#Part 1: create config.py file specify server values
+#Part 1: Fill out sample_config.py file and rename file to config.py
 #username = 'username'
 #password = 'password'
 #ip_addy = 'server ip'
