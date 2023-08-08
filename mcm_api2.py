@@ -28,7 +28,7 @@
 import requests
 from config import *
 
-def get_switch_boot_image(username, password, url):
+def get_api_response(username, password, url):
     try:
         response = requests.get(url, auth=(username, password))
         response.raise_for_status()  # Raise an exception for 4xx and 5xx status codes

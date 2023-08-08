@@ -1,10 +1,14 @@
 MCM9000 API v20 Simple Python api example
+Written for pthon 3.8
+Tested with requests==2.31.0 
+
 How to use:
 
-Part 1: create config.py file specify server values
+Part 1: fill in the infomration in sample_config.py and rename file to config.py
 username = 'username'
 password = 'password'
 ip_addy = 'server ip'
+
 
 Part 2: Using the api to upgrade the software on MCM9000
 
@@ -22,7 +26,6 @@ Part 2: Using the api to upgrade the software on MCM9000
  
  Optional hard restart: 
    get_switch_boot_image(username, password,hard_restart)
-
 
 
 Optional API calls:
