@@ -1,5 +1,5 @@
 ## MCM9000 API v20 Simple Python api example
-# How to use:
+## How to use:
 
 #Part 1: create config.py file specify server values
 #username = 'username'
