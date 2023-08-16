@@ -50,7 +50,7 @@ hard_restart = 'http://{0}/api/2.0/devices/command/hardReset/.json'.format(ip_ad
 
 #Test api return by checking for error_agent
 #This example uses error_display_url and prints out the response
-response = get_switch_boot_image(username, password,error_display_url)
+response = get_api_response(username, password,error_display_url)
 print(response)
 
 #Example response :
