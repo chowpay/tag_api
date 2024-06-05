@@ -13,6 +13,7 @@ port = '443'
 username = 'Admin'
 password = 'Admin'
 version = '5.0'
+config_url = "channels/config"
 
 
 #Get the bearer token
@@ -51,10 +52,10 @@ def get_bearer_token(ip_address, port, username, password, version):
         print('Error: {0}'.format(e))
         return None
 
-#Get channel configs
-def get_channel_config(ip_address, port, version, bearer_token):
+#Get the api response
+def get_config_response(ip_address, port, version, bearer_token,confg_url):
     # Construct the request URL
-    request_url = f"https://{ip_address}:{port}/api/{version}/channels/config/"
+    request_url = "https://{0}:{1}/api/{2}/{3}/".format(ip_address,port,version,config_url)
 
     # Define the headers
     headers = {
@@ -78,14 +79,12 @@ def get_channel_config(ip_address, port, version, bearer_token):
         return None
 
 
-
-
 #Bear token
 token = get_bearer_token(ip_address, port, username, password, version)
 
 if token:
     print('Bearer Token: {0}'.format(token))
-    config = get_channel_config(ip_address, port, version, token)
+    config = get_config_response(ip_address, port, version, token,config_url)
     if config:
         print('Channel Config:', json.dumps(config, indent=4))
     else:
