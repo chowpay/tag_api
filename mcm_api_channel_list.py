@@ -35,14 +35,14 @@ def get_api_response(username, password, url):
     }
     try:
         response = requests.get(url, auth=(username, password), headers=headers)
-        print("Status Code:", response.status_code)  # Print status code for troubleshooting
+        #print("Status Code:", response.status_code)  # Print status code for troubleshooting
 
         # Check if the response is JSON
         if response.headers.get('Content-Type') == 'application/json':
             json_data = response.json()
             return json_data
         else:
-            print("Response is not JSON format")
+            #print("Response is not JSON format")
             return response.text  # Return raw text if not JSON
 
         response.raise_for_status()  # Raise an exception for 4xx and 5xx status codes
@@ -85,27 +85,48 @@ for channel_info in json_data:
 
 ##Gets all the channel info for the MCM
 #print(channel_id_json['ChannelSource']['main_url'])
+
+#MCM info
+mcm_source_info = {}
+mcm_source_info['MCM'] = ip_addy
+
+source_data=[]
 for channel_id in channel_ids:
+    channel_info_dict = {} # holds the channel data for each MCM
     channel_config_id = 'http://{0}/api/2.0/channels/config/{1}/.json'.format(ip_addy,channel_id)
     channel_id_resp = get_api_response(username, password, channel_config_id)
     channel_id_json = json.loads(channel_id_resp)
     channel_data = channel_id_json['ChannelSource']
     channel_title = channel_id_json['ChannelSource']['title']
 
+    # Add channel info
+    channel_info_dict['source_id'] = channel_id
+    channel_info_dict['channel_name'] = channel_title
 
-    #Title
-    print('TITLE: {0}'.format(channel_title))
+    ##Title
+    #print('TITLE: {0}'.format(channel_title))
+
     #Grab the source URL or IP
     if 'main_url' in channel_data:
         #print(channel_id_json)
         main_url = channel_id_json['ChannelSource']['main_url']
-        print(main_url)
+        
+        #Add to channel_dict
+        channel_info_dict['OTT_url'] = main_url
     elif 'ip_address' in channel_data:
-        print(channel_data['ip_address'])
-        print(channel_data['port'])
-        print(channel_data['ssm_ip_address'])
+        channel_ip = channel_data['ip_address']
+        channel_port = channel_data['port']
+        channel_ip = f'{channel_ip}:{channel_port}'
+        channel_ssm_ip = channel_data['ssm_ip_address']
 
+        #Add to channel_dict 
+        channel_info_dict['channel_ip'] = channel_ip
+        channel_info_dict['ssm_ip'] = channel_ssm_ip
+    
+    source_data.append(channel_info_dict) 
+    mcm_source_info['sources'] = source_data
 
+print(mcm_source_info)
 
 
 #Example response :
