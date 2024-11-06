@@ -55,6 +55,27 @@ def get_api_response(username, password, url):
         print("An error occurred:", e)
 
 
+#print pretty report
+def print_sources(data):
+
+    # Separate OTT and multicast sources
+    ott_sources = [source for source in data['sources'] if 'OTT_url' in source]
+    multicast_sources = [source for source in data['sources'] if 'channel_ip' in source]
+
+    # Write data to MCM_sources.txt
+    with open("MCM_sources.txt", "w") as file:
+        file.write(f"MCM: {data['MCM']}\n")
+        file.write("Sources OTT:\n")
+        for source in ott_sources:
+            file.write(f"- {source['channel_name']} : {source['OTT_url']}\n")
+        
+        file.write("\nMulticast Sources:\n")
+        for source in multicast_sources:
+            file.write(f"- {source['channel_name']} : {source['channel_ip']}\n")
+
+
+
+
 #Optional api urls:
 boot_image_url = "http://{0}/api/2.0/devices/switchBootImage/2/.json".format(ip_addy)
 sys_files_url = 'http://{0}/api/2.0/system_files/meta/.json'.format(ip_addy)
@@ -126,7 +147,7 @@ for channel_id in channel_ids:
     source_data.append(channel_info_dict) 
     mcm_source_info['sources'] = source_data
 
-print(mcm_source_info)
+print_sources(mcm_source_info)
 
 
 #Example response :
