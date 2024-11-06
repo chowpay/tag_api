@@ -29,6 +29,7 @@ import requests
 import json
 from config import *
 
+#Send api request to MCM
 def get_api_response(username, password, url):
     headers = {
         'Accept': 'application/json'  # Ensure the server returns JSON
@@ -83,16 +84,21 @@ error_display_url ='http://{0}/api/2.0/error_display_notification_agents/.json'.
 soft_restart = 'http://{0}/api/2.0/devices/command/softReset/.json'.format(ip_addy)
 hard_restart = 'http://{0}/api/2.0/devices/command/hardReset/.json'.format(ip_addy)
 
-#channel_config = f'http://{host}/api/2.0/channels/config/{id_config}/.json'
-channel_config = 'http://{0}/api/2.0/channels/config/.json'.format(ip_addy)
+
+#Get source config information for all channels
+channel_config = f'http://{ip_addy}/api/2.0/channels/config/.json'
 
 #Test api return by checking for error_agent
 #This example uses error_display_url and prints out the response
 #response = get_api_response(username, password,error_display_url)
-response = get_api_response(username, password, channel_config)
 #response = get_api_response(username, password,hard_restart)
 
+#Send channel config request
+response = get_api_response(username, password, channel_config)
+
 json_data =json.loads(response)
+
+#Get a list of all the source IDs
 channel_ids = []
 for channel_info in json_data:
     #Gets every channel id on the MCM
@@ -114,6 +120,7 @@ mcm_source_info['MCM'] = ip_addy
 source_data=[]
 for channel_id in channel_ids:
     channel_info_dict = {} # holds the channel data for each MCM
+    #Get info on the channel id
     channel_config_id = 'http://{0}/api/2.0/channels/config/{1}/.json'.format(ip_addy,channel_id)
     channel_id_resp = get_api_response(username, password, channel_config_id)
     channel_id_json = json.loads(channel_id_resp)
@@ -123,9 +130,6 @@ for channel_id in channel_ids:
     # Add channel info
     channel_info_dict['source_id'] = channel_id
     channel_info_dict['channel_name'] = channel_title
-
-    ##Title
-    #print('TITLE: {0}'.format(channel_title))
 
     #Grab the source URL or IP
     if 'main_url' in channel_data:
@@ -147,6 +151,7 @@ for channel_id in channel_ids:
     source_data.append(channel_info_dict) 
     mcm_source_info['sources'] = source_data
 
+#Generate report 
 print_sources(mcm_source_info)
 
 
