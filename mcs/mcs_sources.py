@@ -1,20 +1,21 @@
 #MCS Sources
+#02152025 by LazyTam
+
 """
-This script is used to clone, delete, or clone from csv file
+This script is used to clone or delete channels (sources) individually or from csv file
+
+The use case for my script is that I have 8 MCMs each receiver is either red-1/blue-1 or red-2/blue-2
+the deployment is 2110 and requires 12 sources per receiver = 96 total receivers. The only difference between
+this set is the labels and alternating networks. Any other feature besides these 3 things will require additional mods
+
 
 Before cloning:
 1. you must have an existing channel to clone from
 2. you must have existing networks defined (RED-1/2 BLUE-1/2 or default NIC#)
 
-
 For cloning both mass or single clone really does 2 things:
 1. This clones everything in a source(aka channel, receiver) except the uuid, which is left to the system to handle
 2. this particular script only clones the source and lets you change the label (channel name) and the receiver networks
-
-
-The use case for my script is that I have 8 MCMs each receiver is either red-1/blue-1 or red-2/blue-2
-the deployment is 2110 and requires 12 sources per receiver = 96 total receivers. The only difference between
-this set is the labels and alternating networks. Any other feature besides these 3 things will require additional mods
 
 
 how to use:
@@ -26,6 +27,8 @@ how to use:
     1. clone from csv : sample file clone_channels_sample.csv
     2. delete from csv : delete_channels_sample.csv
 
+Based off of api documentation here:
+https://tag.atlassian.net/wiki/spaces/UPGRADES/pages/488178726/v5.0_Channel+Config
 """
 
 
@@ -119,7 +122,6 @@ def get_config_response(ip_address, port, version, bearer_token,config_url):
     except requests.exceptions.RequestException as e:
         print("Error: {}".format(e))
         return None
-
 
 
 # List available channels
@@ -259,9 +261,10 @@ def clone_channels_from_csv(token, csv_file):
             #Step 4 Clone the selected base channel
             new_channel = copy.deepcopy(base_clone)
             new_channel["label"] = new_label
-            new_channel["uuid"] = None  # Ensure the system generates a new UUID
+            new_channel["uuid"] = None  # Same as "Null" , the system will create a UUID instead of the script
 
             #Step 5 Assign the networks
+            #Currently only 2 networks are supported because I only needed two at the time
             selected_network_uuids = [network_mapping[network_1_label], network_mapping[network_2_label]]
             assign_networks_to_channel(new_channel, selected_network_uuids)
 
@@ -345,6 +348,7 @@ def main():
     #print(f"\nBearer Token: {token}")
     action = input("\n1. Clone a channel\n2. Delete a channel\n3. Clone multiple channels from CSV\n4. Delete channels from CSV\nEnter your choice: ")
 
+    #Choose your destiny:
     if token:
         if action == "1":
             clone_channel(token)
