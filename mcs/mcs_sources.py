@@ -1,16 +1,30 @@
-#MCS sources
+#MCS Sources
 """
 This script is used to clone, delete, or clone from csv file
 
-how to use:
-1. fill out the api info
-2. python mcs_sources.py
-3. clone single channels
-4. delete single channels
-5. clone many channels from csv
+Before cloning:
+1. you must have an existing channel to clone from
+2. you must have existing networks defined (RED-1/2 BLUE-1/2 or default NIC#)
 
-see clone_channels_sample.xls
-reference channel is :  in the column called
+
+For cloning both mass or single clone really does 2 things:
+1. This clones everything in a source(aka channel, receiver) except the uuid, which is left to the system to handle
+2. this particular script only clones the source and lets you change the label (channel name) and the receiver networks
+
+
+The use case for my script is that I have 8 MCMs each receiver is either red-1/blue-1 or red-2/blue-2
+the deployment is 2110 and requires 12 sources per receiver = 96 total receivers. The only difference between
+this set is the labels and alternating networks. Any other feature besides these 3 things will require additional mods
+
+
+how to use:
+1. fill out the api info in the script with the login info and the mcs ip
+2. follow the prompt when selecting:
+    1. clone
+    2. delete
+3. mass changes:
+    1. clone from csv : sample file clone_channels_sample.csv
+    2. delete from csv : delete_channels_sample.csv
 
 """
 
@@ -230,33 +244,33 @@ def clone_channels_from_csv(token, csv_file):
 
             print(f"\nProcessing Row: {row}")  # Debugging line
 
-            # Step 2: Find the base channel in `all_channels`
+            #Step 2 Find the base channel in `all_channels`
             base_clone = next((ch for ch in all_channels["data"] if ch["label"] == base_clone_label), None)
             if not base_clone:
                 print(f"Error: Base channel '{base_clone_label}' not found. Skipping.")
                 continue
 
-            # Step 3: Validate if the networks exist
+            #Step 3 Validate if the networks exist
             if network_1_label not in network_mapping or network_2_label not in network_mapping:
                 print(f"Error: One or both networks not found for {new_label}. Skipping.")
                 print(f"Available Networks: {list(network_mapping.keys())}")  # Show available networks
                 continue
 
-            # Step 4: Clone the selected base channel
+            #Step 4 Clone the selected base channel
             new_channel = copy.deepcopy(base_clone)
             new_channel["label"] = new_label
             new_channel["uuid"] = None  # Ensure the system generates a new UUID
 
-            # Step 5: Assign the networks
+            #Step 5 Assign the networks
             selected_network_uuids = [network_mapping[network_1_label], network_mapping[network_2_label]]
             assign_networks_to_channel(new_channel, selected_network_uuids)
 
-            # Step 6: Print JSON payload before sending
+            #Step 6 Print json payload before sending
             print("\n==== JSON Payload for New Channel ====")
             print(json.dumps({"data": [new_channel]}, indent=4))
             print("====================================\n")
 
-            # Step 7: Send API request
+            #Step 7 Send API request
             send_create_channel_request(token, new_channel)
 
 # Delete a Channel
@@ -328,10 +342,8 @@ def delete_channels_from_csv(token, csv_file):
 def main():
 
     token = get_bearer_token(ip_address, port, username, password, version)
-    print(f"\n🔹 Bearer Token: {token}")  # Debugging line
+    #print(f"\nBearer Token: {token}")
     action = input("\n1. Clone a channel\n2. Delete a channel\n3. Clone multiple channels from CSV\n4. Delete channels from CSV\nEnter your choice: ")
-
-
 
     if token:
         if action == "1":
