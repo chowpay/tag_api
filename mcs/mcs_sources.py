@@ -296,126 +296,132 @@ def clone_output(token):
 
 
 # Clone multiple channels from CSV
-def clone_channels_from_csv(token, csv_file):
-    print("\nCloning Channels from CSV...")
-
-    # Step 1: Fetch all channels and networks
-    all_channels = get_config_response(ip_address, port, version, token, channel_url)
-    networks = get_config_response(ip_address, port, version, token, network_url)
-
-    if "data" not in all_channels or "data" not in networks:
-        print("Failed to retrieve channels or networks.")
-        return
-
-    network_mapping = get_network_mapping(networks)
-    print(f"\nNetwork Mapping (UUIDs): {network_mapping}")  # Debugging line
-
-    with open(csv_file, mode='r') as file:
-        reader = csv.DictReader(file)
-
-        for row in reader:
-            new_label = row["label"].strip()
-            base_clone_label = row["base_clone"].strip()  # Read base_clone
-            network_1_label = row["network_1"].strip()
-            network_2_label = row["network_2"].strip()
-
-            print(f"\nProcessing Row: {row}")  # Debugging line
-
-            #Step 2 Find the base channel in `all_channels`
-            base_clone = next((ch for ch in all_channels["data"] if ch["label"] == base_clone_label), None)
-            if not base_clone:
-                print(f"Error: Base channel '{base_clone_label}' not found. Skipping.")
-                continue
-
-            #Step 3 Validate if the networks exist
-            if network_1_label not in network_mapping or network_2_label not in network_mapping:
-                print(f"Error: One or both networks not found for {new_label}. Skipping.")
-                print(f"Available Networks: {list(network_mapping.keys())}")  # Show available networks
-                continue
-
-            #Step 4 Clone the selected base channel
-            new_channel = copy.deepcopy(base_clone)
-            new_channel["label"] = new_label
-            new_channel["uuid"] = None  # Same as "Null" , the system will create a UUID instead of the script
-
-            #Step 5 Assign the networks
-            #Currently only 2 networks are supported because I only needed two at the time
-            selected_network_uuids = [network_mapping[network_1_label], network_mapping[network_2_label]]
-            assign_networks_to_channel(new_channel, selected_network_uuids)
-
-            #Step 6 Print json payload before sending
-            print("\n==== JSON Payload for New Channel ====")
-            print(json.dumps({"data": [new_channel]}, indent=4))
-            print("====================================\n")
-
-            #Step 7 Send API request
-            send_create_channel_request(token, new_channel)
-
 
 def clone_outputs_from_csv(token, csv_file):
     print("\nCloning Outputs from CSV...")
 
-    # Step 1: Fetch all output
+    # Step 1: Fetch all outputs and networks
     all_outputs = get_config_response(ip_address, port, version, token, output_url)
     networks = get_config_response(ip_address, port, version, token, network_url)
+
+    ##TS stuff, create an output for 2110 Template, that should go to the top [0] below pulls the channel data for it
+    #print(f"{all_outputs['data'][0]}")
+    #exit()
 
     if "data" not in all_outputs:
         print("Failed to retrieve outputs.")
         return
 
-    with open(csv_file, mode='r', encoding='utf-8-sig') as file:  # fix weird utf thingy
+    # Map the network name to the UUIDs
+    network_mapping = {net["label"]: net["uuid"] for net in networks["data"]}
+    print(f'Network Mapping (UUIDs): {network_mapping}')  # Debugging
 
+    grouped_outputs = {}
+
+    with open(csv_file, mode='r', encoding='utf-8-sig') as file:
         reader = csv.DictReader(file)
 
         for row in reader:
             print(row)
             new_label = row["label"].strip()
             base_clone_label = row["base_clone"].strip()
+            stream_type = row["stream_type"].strip()
+            work_mode = row.get("work_mode", "").strip()  # Optional in CSV
 
-            #Dynamically extract all networks and IP addresses:
+            # Dynamically extract all networks, IP addresses, ports, and TTLs
             network_columns = [col for col in row.keys() if col.startswith("network_")]
-            ip_columns = [col.replace("network_", "ip_address_") for col in network_columns]
-
+            ip_columns = [col for col in row.keys() if col.startswith("ip_address_")]
+            port_columns = [col for col in row.keys() if col.startswith("port_")]
+            ttl_columns = [col for col in row.keys() if col.startswith("ttl_")]
 
             print(f"\nProcessing Row: {row}")  # Debugging line
 
-            #Step 2 Find the base output
-            base_clone = next((out for out in all_outputs["data"] if out["label"] == base_clone_label), None)
-            if not base_clone:
-                print(f"Error: Base output '{base_clone_label}' not found. Skipping.")
-                continue
+            # Step 2: Find or create the base output
+            if new_label not in grouped_outputs:
+                base_clone = next((out for out in all_outputs["data"] if out["label"] == base_clone_label), None)
+                if not base_clone:
+                    print(f"Error: Base output '{base_clone_label}' not found. Skipping.")
+                    continue
 
-            #Step 3 Clone the selected base output
-            new_output = copy.deepcopy(base_clone)
-            new_output["label"] = new_label
-            new_output["uuid"] = None  # Ensure system assigns a new UUID
+                # Step 3: Clone the selected base output
+                new_output = copy.deepcopy(base_clone)
+                new_output["label"] = new_label
+                new_output["uuid"] = None  # Ensure system assigns a new UUID
+                new_output["stream"]["senders"] = []  # Reset senders
 
-            #Step 4 Assign new ips if provided intead of using the default mutlticast IP
-            selected_networks_uuids = []
+                grouped_outputs[new_label] = new_output  # Store it for later modification
 
-            print(f'selected networks uuids: {selected_networks_uuids}') #debugging
+            # Step 4: Assign new IPs if provided
+            cloned_output = grouped_outputs[new_label]
 
-            if "receivers" in new_output: # Check if the cloned output has receivers
-                for reciever in new_output['receivers']: # go through all the receivers
-                    for i, receiver in enumerate(new_output['receivers']): #WHere i is the index of the receiver
-                        if "networks" in receiver: #verify that there is networks within receiver
-                            for j, network in enumerate (receiver['networks']):
-                                if j < len (selected_networks_uuids): #keeps the index within range
-                                    network['network'] = selected_networks_uuids[j] # fill in the ip based off the position in the dict
+            # Step 5: Create a new sender entry for this stream type
+            sender_entry = {
+                "uuid": None,  # Let the system generate a UUID
+                "stream_type": stream_type,
+                "networks": []
+            }
 
-                                #Assign IP if the column exists in the CSV
-                                ip_col = f"ip_address_{j + 1}" #example ip_address_1 , theres no 0 so we start at 1
-                                if ip_col in row and row[ip_col].strip(): #makes sure that row exists and that it has a value
-                                    network['ip_address'] = row[ip_col].strip() # addes in cleaned up ip address
+            # Step 6: Preserve important fields from base clone
+            base_sender = next((s for s in base_clone["stream"]["senders"] if s["stream_type"] == stream_type), None)
+            if base_sender:
+                sender_entry["null_padding"] = base_sender.get("null_padding", False)  # Default False
+                sender_entry["transport_mode"] = base_sender.get("transport_mode", "SPTS/UDP")  # Default for MPEG-TS
+                sender_entry["latency_mode"] = base_sender.get("latency_mode", "5 Frames")
+                sender_entry["payload_type"] = base_sender.get("payload_type", None)
 
-            #Step 5 print out the json
+                # Work mode handling
+                """ 
+                Valid work modes : 6G/12G-SDI  (even when the template has it set to 12G-SDI)
+                This is because  6 for 25/29.97 FPS and 12 for 50/59.94 
+                Work_modes is only for 2110 stuffs not mpeg TS
+                """
+                if work_mode:
+                    sender_entry["work_mode"] = work_mode  # Use CSV value
+                elif "work_mode" in base_sender:
+                    sender_entry["work_mode"] = base_sender["work_mode"]  # Default to base clone
 
-            print("\n==== JSON Payload for New Output ====")
-            print(json.dumps({"data": [new_output]}, indent=4))
-            print("====================================\n")
+            # Step 7: Assign networks, IPs, Ports, and TTLs
+            for j in range(len(network_columns)):
+                net_col = network_columns[j]
+                ip_col = ip_columns[j] if j < len(ip_columns) else None
+                port_col = port_columns[j] if j < len(port_columns) else None
+                ttl_col = ttl_columns[j] if j < len(ttl_columns) else None
 
-            # Step 5: Send API request
-            send_create_output_request(token, new_output)
+                if net_col in row and row[net_col].strip() in network_mapping:
+                    network_uuid = network_mapping[row[net_col].strip()]
+                    network_entry = {
+                        "network": network_uuid,
+                        "enabled": True  # Always enable networks
+                    }
+
+                    if ip_col and ip_col in row and row[ip_col].strip():
+                        network_entry["ip_address"] = row[ip_col].strip()
+
+                    if port_col and port_col in row and row[port_col].strip():
+                        network_entry["port"] = int(row[port_col].strip())
+
+                    if ttl_col and ttl_col in row and row[ttl_col].strip():
+                        network_entry["ttl"] = int(row[ttl_col].strip())
+                    else:
+                        # Default to base sender's TTL if no CSV value
+                        base_network = base_sender["networks"][j] if base_sender and j < len(base_sender["networks"]) else None
+                        if base_network and "ttl" in base_network:
+                            network_entry["ttl"] = base_network["ttl"]
+
+                    sender_entry["networks"].append(network_entry)
+
+            # Append sender to the cloned output
+            cloned_output["stream"]["senders"].append(sender_entry)
+
+    # Step 8: Print out the JSON
+    for label, output_data in grouped_outputs.items():
+        print("\n==== JSON Payload for New Output ====")
+        print(json.dumps({"data": [output_data]}, indent=4))
+        print("====================================\n")
+
+        # Step 9: Send API request
+        send_create_output_request(token, output_data)
+
 
 
 # Delete a Channel
