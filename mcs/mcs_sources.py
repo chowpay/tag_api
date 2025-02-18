@@ -49,8 +49,13 @@ port = '443'
 username = 'Admin'
 password = 'Admin'
 version = '5.0'
+
+#Sources/Receivers/Channels
 channel_url = "channels/config"
 network_url = "networks/config"
+
+#Outputs
+output_url = "outputs/config"  # New API endpoint for outputs
 
 
 # Gets api headers
@@ -131,8 +136,15 @@ def list_channels(channels):
         print(f"{i}. {channel['label']}")
 
 
-# Create cloning actions:
+# List all outputs
+def list_outputs(outputs):
+    print("\nAvailable Outputs:")
+    for i, output in enumerate(outputs["data"], start=1):
+        print(f"{i}. {output['label']}")
 
+
+
+# Create cloning actions:
 # Select a base channel for cloning
 def select_base_clone(channels, action="clone"):
     list_channels(channels)
@@ -142,6 +154,19 @@ def select_base_clone(channels, action="clone"):
         print("Invalid selection. Exiting.")
         return None
     return channels["data"][selected_index]
+
+
+# Select base output for cloning:
+def select_base_output(outputs, action="clone"):
+    list_outputs(outputs)
+    prompt_text = "Enter the number of the output to {}: ".format("delete" if action == "delete" else "clone")
+    selected_index = int(input(prompt_text)) - 1
+    if not (0 <= selected_index < len(outputs["data"])):
+        print("Invalid selection. Exiting.")
+        return None
+    return outputs["data"][selected_index]
+
+
 
 
 # Get network mappings (UUIDs <-> Human-Readable Labels)
@@ -156,7 +181,7 @@ def assign_networks_to_channel(new_channel, selected_network_uuids):
             receiver["networks"][i]["network"] = selected_network_uuids[i]
 
 
-# Send API request to create a new channel
+# Send API request to create a new channel (source)
 def send_create_channel_request(token, new_channel):
     payload = {"data": [new_channel]}
     api_url = f"https://{ip_address}:{port}/api/{version}/channels/config"
@@ -166,6 +191,18 @@ def send_create_channel_request(token, new_channel):
         print(f"Channel '{new_channel['label']}' created successfully!")
     else:
         print(f"Failed to create channel '{new_channel['label']}'. Error: {response.text}")
+
+
+# Create outputs
+def send_create_output_request(token, new_output):
+    payload = {"data": [new_output]}
+    api_url = f"https://{ip_address}:{port}/api/{version}/{output_url}"
+    response = requests.post(api_url, headers=get_headers(token), json=payload, verify=False)
+
+    if response.status_code in [200, 201]:
+        print(f"Output '{new_output['label']}' created successfully!")
+    else:
+        print(f"Failed to create output '{new_output['label']}'. Error: {response.text}")
 
 
 # Clone a single channel
@@ -182,6 +219,7 @@ def clone_channel(token):
     if not selected_channel:
         return
 
+    #using deepcopy copies the object into a new part of the memory so reference list is not effected
     new_channel = copy.deepcopy(selected_channel)
     default_label = selected_channel["label"]
     readline.set_startup_hook(lambda: readline.insert_text(default_label))
@@ -219,6 +257,43 @@ def clone_channel(token):
 
     assign_networks_to_channel(new_channel, selected_network_uuids)
     send_create_channel_request(token, new_channel)
+
+
+# Clone single output
+def clone_output(token):
+    print("\nCloning an Output..")
+    all_outputs = get_config_response(ip_address, port, version, token, output_url)
+
+    if "data" not in all_outputs:
+        print("Failed to retrieve outputs.")
+        return
+
+    selected_output = select_base_output(all_outputs)
+    if not selected_output:
+        return
+
+    new_output = copy.deepcopy(selected_output)
+    default_label = selected_output["label"]
+    readline.set_startup_hook(lambda: readline.insert_text(default_label))
+    new_label = input("Enter the new label for the cloned output: ").strip()
+    readline.set_startup_hook(None)
+
+    if not new_label or new_label == selected_output["label"]:
+        print("Error: The new label cannot be empty or the same as the original.")
+        return
+
+    new_output["label"] = new_label
+    new_output["uuid"] = None  # Reset UUID for system-generated one
+
+    # Step 5: Print JSON before sending
+    print("\n==== JSON Payload for New Output ====")
+    print(json.dumps({"data": [new_output]}, indent=4))
+    print("====================================\n")
+
+    # Step 6: Send API request
+    send_create_output_request(token, new_output)
+
+
 
 # Clone multiple channels from CSV
 def clone_channels_from_csv(token, csv_file):
@@ -276,6 +351,73 @@ def clone_channels_from_csv(token, csv_file):
             #Step 7 Send API request
             send_create_channel_request(token, new_channel)
 
+
+def clone_outputs_from_csv(token, csv_file):
+    print("\nCloning Outputs from CSV...")
+
+    # Step 1: Fetch all output
+    all_outputs = get_config_response(ip_address, port, version, token, output_url)
+    networks = get_config_response(ip_address, port, version, token, network_url)
+
+    if "data" not in all_outputs:
+        print("Failed to retrieve outputs.")
+        return
+
+    with open(csv_file, mode='r', encoding='utf-8-sig') as file:  # fix weird utf thingy
+
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            print(row)
+            new_label = row["label"].strip()
+            base_clone_label = row["base_clone"].strip()
+
+            #Dynamically extract all networks and IP addresses:
+            network_columns = [col for col in row.keys() if col.startswith("network_")]
+            ip_columns = [col.replace("network_", "ip_address_") for col in network_columns]
+
+
+            print(f"\nProcessing Row: {row}")  # Debugging line
+
+            #Step 2 Find the base output
+            base_clone = next((out for out in all_outputs["data"] if out["label"] == base_clone_label), None)
+            if not base_clone:
+                print(f"Error: Base output '{base_clone_label}' not found. Skipping.")
+                continue
+
+            #Step 3 Clone the selected base output
+            new_output = copy.deepcopy(base_clone)
+            new_output["label"] = new_label
+            new_output["uuid"] = None  # Ensure system assigns a new UUID
+
+            #Step 4 Assign new ips if provided intead of using the default mutlticast IP
+            selected_networks_uuids = []
+
+            print(f'selected networks uuids: {selected_networks_uuids}') #debugging
+
+            if "receivers" in new_output: # Check if the cloned output has receivers
+                for reciever in new_output['receivers']: # go through all the receivers
+                    for i, receiver in enumerate(new_output['receivers']): #WHere i is the index of the receiver
+                        if "networks" in receiver: #verify that there is networks within receiver
+                            for j, network in enumerate (receiver['networks']):
+                                if j < len (selected_networks_uuids): #keeps the index within range
+                                    network['network'] = selected_networks_uuids[j] # fill in the ip based off the position in the dict
+
+                                #Assign IP if the column exists in the CSV
+                                ip_col = f"ip_address_{j + 1}" #example ip_address_1 , theres no 0 so we start at 1
+                                if ip_col in row and row[ip_col].strip(): #makes sure that row exists and that it has a value
+                                    network['ip_address'] = row[ip_col].strip() # addes in cleaned up ip address
+
+            #Step 5 print out the json
+
+            print("\n==== JSON Payload for New Output ====")
+            print(json.dumps({"data": [new_output]}, indent=4))
+            print("====================================\n")
+
+            # Step 5: Send API request
+            send_create_output_request(token, new_output)
+
+
 # Delete a Channel
 def delete_channel(token):
     print("\nDeleting a Channel...")
@@ -301,6 +443,33 @@ def delete_channel(token):
         print(f"Channel '{selected_channel['label']}' deleted successfully!")
     else:
         print(f"Failed to delete channel. Error: {response.text}")
+
+
+# Delete output
+def delete_output(token):
+    print("\nDeleting an Output...")
+    all_outputs = get_config_response(ip_address, port, version, token, output_url)
+
+    if "data" not in all_outputs:
+        print("Failed to retrieve outputs.")
+        return
+
+    selected_output = select_base_output(all_outputs, action="delete")
+    if not selected_output:
+        return
+
+    confirm = input(f"Are you sure you want to delete '{selected_output['label']}'? (yes/no): ").strip().lower()
+    if confirm != "yes":
+        print("Deletion canceled.")
+        return
+
+    api_url = f"https://{ip_address}:{port}/api/{version}/{output_url}/{selected_output['uuid']}"
+    response = requests.delete(api_url, headers=get_headers(token), verify=False)
+
+    if response.status_code in [200, 204]:
+        print(f"Output '{selected_output['label']}' deleted successfully!")
+    else:
+        print(f"Failed to delete output. Error: {response.text}")
 
 # Delete a channel using CSV
 def delete_channels_from_csv(token, csv_file):
@@ -341,25 +510,84 @@ def delete_channels_from_csv(token, csv_file):
                 print(f"Failed to delete channel '{delete_label}'. Error: {response.text}")
 
 
+# Delete outputs
+def delete_outputs_from_csv(token, csv_file):
+    print("\nDeleting Outputs from CSV...")
+
+    # Fetch all outputs
+    all_outputs = get_config_response(ip_address, port, version, token, output_url)
+
+    if "data" not in all_outputs:
+        print("Failed to retrieve outputs.")
+        return
+
+    with open(csv_file, mode='r') as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            delete_label = row.get("delete_output", "").strip()
+
+            if not delete_label:
+                continue
+
+            selected_output = next((out for out in all_outputs["data"] if out["label"] == delete_label), None)
+            if not selected_output:
+                print(f"Error: Output '{delete_label}' not found. Skipping.")
+                continue
+
+            delete_uuid = selected_output["uuid"]
+            api_url = f"https://{ip_address}:{port}/api/{version}/{output_url}/{delete_uuid}"
+            response = requests.delete(api_url, headers=get_headers(token), verify=False)
+
+            if response.status_code in [200, 204]:
+                print(f"Output '{delete_label}' deleted successfully!")
+            else:
+                print(f"Failed to delete output. Error: {response.text}")
+
 
 def main():
-
     token = get_bearer_token(ip_address, port, username, password, version)
-    #print(f"\nBearer Token: {token}")
-    action = input("\n1. Clone a channel\n2. Delete a channel\n3. Clone multiple channels from CSV\n4. Delete channels from CSV\nEnter your choice: ")
 
-    #Choose your destiny:
+    print("""
+    Sources:
+    1. Channel - Clone
+    2. Channel - Delete
+    3. Channel - Clone with CSV
+    4. Channel - Delete with CSV
+
+    Outputs:
+    5. Output - Clone
+    6. Output - Delete
+    7. Output - Clone with CSV
+    8. Output - Delete with CSV
+    """)
+
+    action = input("Enter your choice: ").strip()
+
+    # Process user's choice
     if token:
         if action == "1":
             clone_channel(token)
         elif action == "2":
             delete_channel(token)
         elif action == "3":
-            csv_file = input("Enter CSV file path: ")
+            csv_file = input("Enter CSV file path: ").strip()
             clone_channels_from_csv(token, csv_file)
         elif action == "4":
-            csv_file = input("Enter CSV file path: ")
+            csv_file = input("Enter CSV file path: ").strip()
             delete_channels_from_csv(token, csv_file)
+        elif action == "5":
+            clone_output(token)
+        elif action == "6":
+            delete_output(token)
+        elif action == "7":
+            csv_file = input("Enter CSV file path: ").strip()
+            clone_outputs_from_csv(token, csv_file)
+        elif action == "8":
+            csv_file = input("Enter CSV file path: ").strip()
+            delete_outputs_from_csv(token, csv_file)
+        else:
+            print("Invalid choice. Please enter a number from the menu.")
 # Run Script
 if __name__== "__main__":
     main()
