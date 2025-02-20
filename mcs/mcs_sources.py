@@ -304,7 +304,7 @@ def clone_outputs_from_csv(token, csv_file):
     all_outputs = get_config_response(ip_address, port, version, token, output_url)
     networks = get_config_response(ip_address, port, version, token, network_url)
 
-    ##TS stuff, create an output for 2110 Template, that should go to the top [0] below pulls the channel data for it
+    ###TS stuff, create an output for 2110 Template, that should go to the top [0] below pulls the channel data for it
     #print(f"{all_outputs['data'][0]}")
     #exit()
 
@@ -328,7 +328,7 @@ def clone_outputs_from_csv(token, csv_file):
             stream_type = row["stream_type"].strip()
             work_mode = row.get("work_mode", "").strip()  # Optional in CSV
 
-            # Dynamically extract all networks, IP addresses, ports, and TTLs
+            ## Dynamically extract all networks, IP addresses, ports, and TTLs
             network_columns = [col for col in row.keys() if col.startswith("network_")]
             ip_columns = [col for col in row.keys() if col.startswith("ip_address_")]
             port_columns = [col for col in row.keys() if col.startswith("port_")]
@@ -371,8 +371,12 @@ def clone_outputs_from_csv(token, csv_file):
 
                 # Work mode handling
                 """ 
-                Valid work modes : 6G/12G-SDI  (even when the template has it set to 12G-SDI)
-                This is because  6 for 25/29.97 FPS and 12 for 50/59.94 
+                Valid work modes, use these names on the spreadsheet : 
+                "6G/12G-SDI"  (even when the template has it set to 12G-SDI) This is because  6 for 25/29.97 FPS and 12 for 50/59.94 
+                "HD/3G-SDI (Progressive)"  yes, include the words in the parenthesis 
+                "HD-SDI (Interlaced)" 
+                ...Add more here later
+                
                 Work_modes is only for 2110 stuffs not mpeg TS
                 """
                 if work_mode:
