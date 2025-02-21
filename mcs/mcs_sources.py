@@ -295,8 +295,68 @@ def clone_output(token):
 
 
 
-# Clone multiple channels from CSV
+# Clone multiple channels (sources) from CSV
+def clone_channels_from_csv(token, csv_file):
+    print("\nCloning Channels from CSV...")
 
+    # Step 1: Fetch all available channels and networks
+    all_channels = get_config_response(ip_address, port, version, token, channel_url)
+    networks = get_config_response(ip_address, port, version, token, network_url)
+
+    if "data" not in all_channels or "data" not in networks:
+        print("Failed to retrieve channels or networks.")
+        return
+
+    # Map network names to UUIDs
+    network_mapping = {net["label"]: net["uuid"] for net in networks["data"]}
+    print(f'Network Mapping (UUIDs): {network_mapping}')  # Debugging
+
+    with open(csv_file, mode='r', encoding='utf-8-sig') as file:  # Handle UTF encoding
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            print(row)
+            new_label = row["label"].strip()
+            base_clone_label = row["base_clone"].strip()
+
+            # Dynamically extract network columns
+            network_columns = [col for col in row.keys() if col.startswith("network_")]
+
+            print(f"\nProcessing Row: {row}")  # Debugging line
+
+            # Step 2: Find the base channel
+            base_clone = next((ch for ch in all_channels["data"] if ch["label"] == base_clone_label), None)
+            if not base_clone:
+                print(f"Error: Base channel '{base_clone_label}' not found. Skipping.")
+                continue
+
+            # Step 3: Clone the selected base channel
+            new_channel = copy.deepcopy(base_clone)
+            new_channel["label"] = new_label
+            new_channel["uuid"] = None  # Ensure system assigns a new UUID
+
+            # Step 4: Assign new network UUIDs from CSV if specified
+            if "receivers" in new_channel and new_channel["receivers"]:
+                for receiver in new_channel["receivers"]:  # Iterate over all receivers
+                    for j in range(len(network_columns)):  # Iterate over available networks
+                        net_col = network_columns[j]
+
+                        if net_col in row and row[net_col].strip() in network_mapping:
+                            network_uuid = network_mapping[row[net_col].strip()]
+                            if j < len(receiver["networks"]):  # Keep within the existing network list range
+                                receiver["networks"][j]["network"] = network_uuid
+                                receiver["networks"][j]["enabled"] = True  # Ensure it's enabled
+
+            # Step 5: Print out the JSON
+            print("\n==== JSON Payload for New Channel ====")
+            print(json.dumps({"data": [new_channel]}, indent=4))
+            print("====================================\n")
+
+            # Step 6: Send API request
+            send_create_channel_request(token, new_channel)
+
+
+# Clone multiple outputs from CSV
 def clone_outputs_from_csv(token, csv_file):
     print("\nCloning Outputs from CSV...")
 
