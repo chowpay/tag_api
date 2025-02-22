@@ -167,8 +167,6 @@ def select_base_output(outputs, action="clone"):
     return outputs["data"][selected_index]
 
 
-
-
 # Get network mappings (UUIDs <-> Human-Readable Labels)
 def get_network_mapping(networks):
     return {net["label"]: net["uuid"] for net in networks["data"]}
@@ -205,7 +203,7 @@ def send_create_output_request(token, new_output):
         print(f"Failed to create output '{new_output['label']}'. Error: {response.text}")
 
 
-# Clone a single channel
+# Clone a single channel (source)
 def clone_channel(token):
     print("\nCloning a Channel..")
     all_channels = get_config_response(ip_address, port, version, token, channel_url)
@@ -307,6 +305,10 @@ def clone_channels_from_csv(token, csv_file):
         print("Failed to retrieve channels or networks.")
         return
 
+    ##Troubleshooting
+    #print(f"{all_channels['data'][0]}")
+    #exit()
+
     # Map network names to UUIDs
     network_mapping = {net["label"]: net["uuid"] for net in networks["data"]}
     print(f'Network Mapping (UUIDs): {network_mapping}')  # Debugging
@@ -335,7 +337,16 @@ def clone_channels_from_csv(token, csv_file):
             new_channel["label"] = new_label
             new_channel["uuid"] = None  # Ensure system assigns a new UUID
 
-            # Step 4: Assign new network UUIDs from CSV if specified
+
+            # Step 4: Assign `tally_settings` if specified in CSV, otherwise retain the original value
+            if "config" in new_channel:
+                if "tally_settings" in row:  # Check if column exists in CSV
+                    if row["tally_settings"].strip():  # If not empty, use the CSV value
+                        new_channel["config"]["tally_settings"] = row["tally_settings"].strip()
+                    else:  # If empty, explicitly set to None
+                        new_channel["config"]["tally_settings"] = None
+
+            # Step 5: Assign new network UUIDs from CSV if specified
             if "receivers" in new_channel and new_channel["receivers"]:
                 for receiver in new_channel["receivers"]:  # Iterate over all receivers
                     for j in range(len(network_columns)):  # Iterate over available networks
@@ -347,12 +358,12 @@ def clone_channels_from_csv(token, csv_file):
                                 receiver["networks"][j]["network"] = network_uuid
                                 receiver["networks"][j]["enabled"] = True  # Ensure it's enabled
 
-            # Step 5: Print out the JSON
+            #Step 6: Print out the JSON
             print("\n==== JSON Payload for New Channel ====")
             print(json.dumps({"data": [new_channel]}, indent=4))
             print("====================================\n")
 
-            # Step 6: Send API request
+            #Step 6: Send API request
             send_create_channel_request(token, new_channel)
 
 
