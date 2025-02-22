@@ -626,22 +626,109 @@ def delete_outputs_from_csv(token, csv_file):
                 print(f"Failed to delete output. Error: {response.text}")
 
 
+
+#This section does only updates to existing channels:
+
+#Get the existing lable and uuids from each channel
+def export_channels_to_csv(token, csv_file):
+    print("\nExporting Channels to CSV...")
+
+    # Step 1: Fetch all available channels
+    all_channels = get_config_response(ip_address, port, version, token, channel_url)
+
+    if "data" not in all_channels:
+        print("Failed to retrieve channels.")
+        return
+
+    # Step 2: Write to CSV
+    with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerow(["uuid", "label", "access_type", "service_type", "tally_settings"])  # Add relevant fields
+
+        for channel in all_channels["data"]:
+            uuid = channel.get("uuid", "")
+            label = channel.get("label", "")
+            access_type = channel.get("access_type", "")
+            service_type = channel.get("service_type", "")
+            tally_settings = channel.get("config", {}).get("tally_settings", "")
+
+            writer.writerow([uuid, label, access_type, service_type, tally_settings])
+
+    print(f"\nExported {len(all_channels['data'])} channels to {csv_file}")
+
+
+#Update each channel from CSV based on UUIDs
+def update_channels_from_csv(token, csv_file):
+    print("\nUpdating Channels from CSV...")
+
+    with open(csv_file, mode='r', encoding='utf-8-sig') as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            uuid = row["uuid"].strip()
+            if not uuid:  # Skip rows without a UUID
+                print(f"Skipping row with missing UUID: {row}")
+                continue
+
+            new_label = row["label"].strip()
+            access_type = row["access_type"].strip()
+            service_type = row["service_type"].strip()
+            tally_settings = row["tally_settings"].strip()
+
+            # Fetch existing channel configuration
+            #channel_url = f"https://{ip_address}:{port}/api/{version}/channels/config/{uuid}"
+            #existing_channel = get_config_response(ip_address, port, version, token, channel_url)
+
+            config_url = f"channels/config/{uuid}"
+            existing_channel = get_config_response(ip_address, port, version, token, config_url)
+
+            #print(f"UPDATE channels: {channel_url}")
+            #exit()
+
+            if "data" not in existing_channel:
+                print(f"Failed to fetch channel {uuid}. Skipping...")
+                continue
+
+            updated_channel = existing_channel["data"]
+            updated_channel["label"] = new_label
+            updated_channel["access_type"] = access_type
+            updated_channel["service_type"] = service_type
+            updated_channel["config"]["tally_settings"] = tally_settings  # Update tally_settings if provided
+
+
+            # Send PUT request to update the channel
+            channel_url = f"https://{ip_address}:{port}/api/{version}/channels/config/{uuid}"
+
+            response = requests.put(channel_url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, json=updated_channel, verify=False)
+
+            if response.status_code == 200:
+                print(f"Successfully updated channel {new_label} ({uuid})")
+            else:
+                print(f"Failed to update channel {new_label} ({uuid}): {response.text}")
+
+
+
+
 def main():
     token = get_bearer_token(ip_address, port, username, password, version)
 
     print("""
-    Sources:
-    1. Channel - Clone
-    2. Channel - Delete
-    3. Channel - Clone with CSV
-    4. Channel - Delete with CSV
+       Clone:
+       1. Source - Clone
+       2. Source - Clone with CSV
+       3. Output - Clone
+       4. Output - Clone with CSV
 
-    Outputs:
-    5. Output - Clone
-    6. Output - Delete
-    7. Output - Clone with CSV
-    8. Output - Delete with CSV
-    """)
+       Delete:
+       5. Source - Delete
+       6. Source - Delete with CSV
+       7. Output - Delete
+       8. Output - Delete with CSV
+
+       Update:
+       9. Export existing channels to CSV
+       10. Update sources by CSV
+       """)
 
     action = input("Enter your choice: ").strip()
 
@@ -650,23 +737,29 @@ def main():
         if action == "1":
             clone_channel(token)
         elif action == "2":
-            delete_channel(token)
-        elif action == "3":
             csv_file = input("Enter CSV file path: ").strip()
             clone_channels_from_csv(token, csv_file)
+        elif action == "3":
+            clone_output(token)
         elif action == "4":
             csv_file = input("Enter CSV file path: ").strip()
-            delete_channels_from_csv(token, csv_file)
-        elif action == "5":
-            clone_output(token)
-        elif action == "6":
-            delete_output(token)
-        elif action == "7":
-            csv_file = input("Enter CSV file path: ").strip()
             clone_outputs_from_csv(token, csv_file)
+        elif action == "5":
+            delete_channel(token)
+        elif action == "6":
+            csv_file = input("Enter CSV file path: ").strip()
+            delete_channels_from_csv(token, csv_file)
+        elif action == "7":
+            delete_output(token)
         elif action == "8":
             csv_file = input("Enter CSV file path: ").strip()
             delete_outputs_from_csv(token, csv_file)
+        elif action == "9":
+            csv_file = input("Enter CSV file path to save exported channels: ").strip()
+            export_channels_to_csv(token, csv_file)
+        elif action == "10":
+            csv_file = input("Enter CSV file path: ").strip()
+            update_channels_from_csv(token, csv_file)
         else:
             print("Invalid choice. Please enter a number from the menu.")
 # Run Script
